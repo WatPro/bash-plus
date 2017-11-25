@@ -3,333 +3,231 @@
 # Discussion, issues and change requests at:
 #   https://github.com/nodesource/distributions
 #
-# Script to install the NodeSource Node.js v8.x repo onto a
-# Debian or Ubuntu system.
+# Script to install the NodeSource Node.js 8.x repo onto an
+# Enterprise Linux or Fedora Core based system.
 #
 # Run as root or insert `sudo -E` before `bash`:
 #
-# curl -sL https://deb.nodesource.com/setup_8.x | bash -
+# curl -sL https://rpm.nodesource.com/setup_8.x | bash -
 #   or
-# wget -qO- https://deb.nodesource.com/setup_8.x | bash -
+# wget -qO- https://rpm.nodesource.com/setup_8.x | bash -
 #
 
-export DEBIAN_FRONTEND=noninteractive
-SCRSUFFIX="_8.x"
-NODENAME="Node.js v8.x"
-NODEREPO="node_8.x"
-NODEPKG="nodejs"
-
 print_status() {
-    echo
-    echo "## $1"
-    echo
-}
-
-if test -t 1; then # if terminal
-    ncolors=$(which tput > /dev/null && tput colors) # supports color
-    if test -n "$ncolors" && test $ncolors -ge 8; then
-        termcols=$(tput cols)
-        bold="$(tput bold)"
-        underline="$(tput smul)"
-        standout="$(tput smso)"
-        normal="$(tput sgr0)"
-        black="$(tput setaf 0)"
-        red="$(tput setaf 1)"
-        green="$(tput setaf 2)"
-        yellow="$(tput setaf 3)"
-        blue="$(tput setaf 4)"
-        magenta="$(tput setaf 5)"
-        cyan="$(tput setaf 6)"
-        white="$(tput setaf 7)"
-    fi
-fi
-
-print_bold() {
-    title="$1"
-    text="$2"
-
-    echo
-    echo "${red}================================================================================${normal}"
-    echo "${red}================================================================================${normal}"
-    echo
-    echo -e "  ${bold}${yellow}${title}${normal}"
-    echo
-    echo -en "  ${text}"
-    echo
-    echo "${red}================================================================================${normal}"
-    echo "${red}================================================================================${normal}"
+  local outp=$(echo "$1" | sed -r 's/\\n/\\n## /mg')
+  echo
+  echo -e "## ${outp}"
+  echo
 }
 
 bail() {
-    echo 'Error executing command, exiting'
-    exit 1
+  echo 'Error executing command, exiting'
+  exit 1
 }
 
 exec_cmd_nobail() {
-    echo "+ $1"
-    bash -c "$1"
+  echo "+ $1"
+  bash -c "$1"
 }
 
 exec_cmd() {
-    exec_cmd_nobail "$1" || bail
+  exec_cmd_nobail "$1" || bail
 }
 
-node_deprecation_warning() {
-    if [[ "X${NODENAME}" == "Xio.js v1.x" ||
-          "X${NODENAME}" == "Xio.js v2.x" ||
-          "X${NODENAME}" == "Xio.js v3.x" ||
-          "X${NODENAME}" == "XNode.js v5.x" ]]; then
+print_status "Installing the NodeSource Node.js 8.x repo..."
 
-        print_bold \
-"                            DEPRECATION WARNING                            " "\
-${bold}${NODENAME} is no longer actively supported!${normal}
+print_status "Inspecting system..."
 
-  ${bold}You will not receive security or critical stability updates${normal} for this version.
-
-  You should migrate to a supported version of Node.js as soon as possible.
-  Use the installation script that corresponds to the version of Node.js you
-  wish to install. e.g.
-
-   * ${green}https://deb.nodesource.com/setup_4.x — Node.js v4 LTS \"Argon\"${normal} (recommended)
-   * ${green}https://deb.nodesource.com/setup_6.x — Node.js v6 Current${normal}
-
-  Please see ${bold}https://github.com/nodejs/LTS/${normal} for details about which version
-  may be appropriate for you.
-
-  The ${bold}NodeSource${normal} Node.js Linux distributions GitHub repository contains
-  information about which versions of Node.js and which Linux distributions
-  are supported and how to use the install scripts.
-    ${bold}https://github.com/nodesource/distributions${normal}
+if [ ! -x /bin/rpm ]; then
+  print_status "\
+You don't appear to be running an Enterprise Linux based \
+system, please contact NodeSource at \
+https://github.com/nodesource/distributions/issues if you think this \
+is incorrect or would like your distribution to be considered for \
+support.\
 "
-        echo
-        echo "Continuing in 10 seconds ..."
-        echo
-        sleep 10
-
-    elif [ "X${NODENAME}" == "XNode.js v0.10" ]; then
-
-        print_bold \
-"                     NODE.JS v0.10 DEPRECATION WARNING                      " "\
-Node.js v0.10 will cease to be actively supported in ${bold}October 2016${normal}.
-
-  This means you will not continue to receive security or critical stability
-  updates for this version of Node.js beyond that time.
-
-  You should begin migration to a newer version of Node.js as soon as
-  possible. Use the installation script that corresponds to the version of
-  Node.js you wish to install. e.g.
-
-   * ${green}https://deb.nodesource.com/setup_4.x — Node.js v4 LTS \"Argon\"${normal} (recommended)
-   * ${green}https://deb.nodesource.com/setup_6.x — Node.js v6 Current${normal}
-
-  Please see ${bold}https://github.com/nodejs/LTS/${normal} for details about which version
-  may be appropriate for you.
-
-  The ${bold}NodeSource${normal} Node.js Linux distributions GitHub repository contains
-  information about which versions of Node.js and which Linux distributions
-  are supported and how to use the install scripts.
-    ${bold}https://github.com/nodesource/distributions${normal}
-"
-
-        echo
-        echo "Continuing in 5 seconds ..."
-        echo
-        sleep 5
-
-    elif [ "X${NODENAME}" == "XNode.js v0.12" ]; then
-
-        print_bold \
-"                     NODE.JS v0.12 DEPRECATION WARNING                      " "\
-Node.js v0.12 will cease to be actively supported ${bold}at the end of 2016${normal}.
-
-  This means you will not continue to receive security or critical stability
-  updates for this version of Node.js beyond that time.
-
-  You should begin migration to a newer version of Node.js as soon as
-  possible. Use the installation script that corresponds to the version of
-  Node.js you wish to install. e.g.
-
-   * ${green}https://deb.nodesource.com/setup_4.x — Node.js v4 LTS \"Argon\"${normal} (recommended)
-   * ${green}https://deb.nodesource.com/setup_6.x — Node.js v6 Current${normal}
-
-  Please see ${bold}https://github.com/nodejs/LTS/${normal} for details about which version
-  may be appropriate for you.
-
-  The ${bold}NodeSource${normal} Node.js Linux distributions GitHub repository contains
-  information about which versions of Node.js and which Linux distributions
-  are supported and how to use the install scripts.
-    ${bold}https://github.com/nodesource/distributions${normal}
-"
-
-        echo
-        echo "Continuing in 3 seconds ..."
-        echo
-        sleep 3
-
-    fi
-}
-
-script_deprecation_warning() {
-    if [ "X${SCRSUFFIX}" == "X" ]; then
-        print_bold \
-"                         SCRIPT DEPRECATION WARNING                         " "\
-This script, located at ${bold}https://deb.nodesource.com/setup${normal}, used to
-  install Node.js v0.10, is being deprecated and will eventually be made
-  inactive.
-
-  You should use the script that corresponds to the version of Node.js you
-  wish to install. e.g.
-
-   * ${green}https://deb.nodesource.com/setup_4.x — Node.js v4 LTS \"Argon\"${normal} (recommended)
-   * ${green}https://deb.nodesource.com/setup_6.x — Node.js v6 Current${normal}
-
-  Please see ${bold}https://github.com/nodejs/LTS/${normal} for details about which version
-  may be appropriate for you.
-
-  The ${bold}NodeSource${normal} Node.js Linux distributions GitHub repository contains
-  information about which versions of Node.js and which Linux distributions
-  are supported and how to use the install scripts.
-    ${bold}https://github.com/nodesource/distributions${normal}
-"
-
-        echo
-        echo "Continuing in 10 seconds (press Ctrl-C to abort) ..."
-        echo
-        sleep 10
-    fi
-}
-
-setup() {
-
-script_deprecation_warning
-
-print_status "Installing the NodeSource ${NODENAME} repo..."
-
-if $(uname -m | grep -Eq ^armv6); then
-    print_status "You appear to be running on ARMv6 hardware. Unfortunately this is not currently supported by the NodeSource Linux distributions. Please use the 'linux-armv6l' binary tarballs available directly from nodejs.org for Node.js v4 and later."
-    exit 1
+  exit 1
 fi
 
-PRE_INSTALL_PKGS=""
+## Annotated section for auto extraction in test.sh
+#-check-distro-#
 
-# Check that HTTPS transport is available to APT
-# (Check snaked from: https://get.docker.io/ubuntu/)
+## Check distro and arch
+echo "+ rpm -q --whatprovides redhat-release || rpm -q --whatprovides centos-release || rpm -q --whatprovides cloudlinux-release || rpm -q --whatprovides sl-release"
+DISTRO_PKG=$(rpm -q --whatprovides redhat-release || rpm -q --whatprovides centos-release || rpm -q --whatprovides cloudlinux-release || rpm -q --whatprovides sl-release)
+echo "+ uname -m"
+UNAME_ARCH=$(uname -m)
 
-if [ ! -e /usr/lib/apt/methods/https ]; then
-    PRE_INSTALL_PKGS="${PRE_INSTALL_PKGS} apt-transport-https"
-fi
 
-if [ ! -x /usr/bin/lsb_release ]; then
-    PRE_INSTALL_PKGS="${PRE_INSTALL_PKGS} lsb-release"
-fi
-
-if [ ! -x /usr/bin/curl ] && [ ! -x /usr/bin/wget ]; then
-    PRE_INSTALL_PKGS="${PRE_INSTALL_PKGS} curl"
-fi
-
-# Populating Cache
-print_status "Populating apt-get cache..."
-exec_cmd 'apt-get update'
-
-if [ "X${PRE_INSTALL_PKGS}" != "X" ]; then
-    print_status "Installing packages required for setup:${PRE_INSTALL_PKGS}..."
-    # This next command needs to be redirected to /dev/null or the script will bork
-    # in some environments
-    exec_cmd "apt-get install -y${PRE_INSTALL_PKGS} > /dev/null 2>&1"
-fi
-
-IS_PRERELEASE=$(lsb_release -d | grep 'Ubuntu .*development' >& /dev/null; echo $?)
-if [[ $IS_PRERELEASE -eq 0 ]]; then
-    print_status "Your distribution, identified as \"$(lsb_release -d -s)\", is a pre-release version of Ubuntu. NodeSource does not maintain official support for Ubuntu versions until they are formally released. You can try using the manual installation instructions available at https://github.com/nodesource/distributions and use the latest supported Ubuntu version name as the distribution identifier, although this is not guaranteed to work."
-    exit 1
-fi
-
-DISTRO=$(lsb_release -c -s)
-
-check_alt() {
-    if [ "X${DISTRO}" == "X${2}" ]; then
-        echo
-        echo "## You seem to be using ${1} version ${DISTRO}."
-        echo "## This maps to ${3} \"${4}\"... Adjusting for you..."
-        DISTRO="${4}"
-    fi
-}
-
-check_alt "Kali"          "sana"     "Debian" "jessie"
-check_alt "Kali"          "kali-rolling" "Debian" "jessie"
-check_alt "Linux Mint"    "maya"     "Ubuntu" "precise"
-check_alt "Linux Mint"    "qiana"    "Ubuntu" "trusty"
-check_alt "Linux Mint"    "rafaela"  "Ubuntu" "trusty"
-check_alt "Linux Mint"    "rebecca"  "Ubuntu" "trusty"
-check_alt "Linux Mint"    "rosa"     "Ubuntu" "trusty"
-check_alt "Linux Mint"    "sarah"    "Ubuntu" "xenial"
-check_alt "Linux Mint"    "serena"   "Ubuntu" "xenial"
-check_alt "Linux Mint"    "sonya"    "Ubuntu" "xenial"
-check_alt "LMDE"          "betsy"    "Debian" "jessie"
-check_alt "elementaryOS"  "luna"     "Ubuntu" "precise"
-check_alt "elementaryOS"  "freya"    "Ubuntu" "trusty"
-check_alt "elementaryOS"  "loki"     "Ubuntu" "xenial"
-check_alt "Trisquel"      "toutatis" "Ubuntu" "precise"
-check_alt "Trisquel"      "belenos"  "Ubuntu" "trusty"
-check_alt "BOSS"          "anokha"   "Debian" "wheezy"
-check_alt "bunsenlabs"    "bunsen-hydrogen" "Debian" "jessie"
-check_alt "Tanglu"        "chromodoris" "Debian" "jessie"
-
-if [ "X${DISTRO}" == "Xdebian" ]; then
-  print_status "Unknown Debian-based distribution, checking /etc/debian_version..."
-  NEWDISTRO=$([ -e /etc/debian_version ] && cut -d/ -f1 < /etc/debian_version)
-  if [ "X${NEWDISTRO}" == "X" ]; then
-    print_status "Could not determine distribution from /etc/debian_version..."
-  else
-    DISTRO=$NEWDISTRO
-    print_status "Found \"${DISTRO}\" in /etc/debian_version..."
-  fi
-fi
-
-print_status "Confirming \"${DISTRO}\" is supported..."
-
-if [ -x /usr/bin/curl ]; then
-    exec_cmd_nobail "curl -sLf -o /dev/null 'https://deb.nodesource.com/${NODEREPO}/dists/${DISTRO}/Release'"
-    RC=$?
+if [ "X${UNAME_ARCH}" == "Xi686" ]; then
+  DIST_ARCH=i386
+elif [ "X${UNAME_ARCH}" == "Xx86_64" ]; then
+  DIST_ARCH=x86_64
 else
-    exec_cmd_nobail "wget -qO /dev/null -o /dev/null 'https://deb.nodesource.com/${NODEREPO}/dists/${DISTRO}/Release'"
-    RC=$?
+
+  print_status "\
+You don't appear to be running a supported machine architecture: ${UNAME_ARCH}. \
+Please contact NodeSource at \
+https://github.com/nodesource/distributions/issues if you think this is \
+incorrect or would like your architecture to be considered for support. \
+"
+  exit 1
+
 fi
+
+if [[ $DISTRO_PKG =~ ^(redhat|centos|cloudlinux|sl)- ]]; then
+    DIST_TYPE=el
+elif [[ $DISTRO_PKG =~ ^system-release- ]]; then # Amazon Linux
+    DIST_TYPE=el
+elif [[ $DISTRO_PKG =~ ^(fedora|korora)- ]]; then
+    DIST_TYPE=fc
+else
+
+  print_status "\
+You don't appear to be running a supported version of Enterprise Linux. \
+Please contact NodeSource at \
+https://github.com/nodesource/distributions/issues if you think this is \
+incorrect or would like your architecture to be considered for support. \
+Include your 'distribution package' name: ${DISTRO_PKG}. \
+"
+  exit 1
+
+fi
+
+if [[ $DISTRO_PKG =~ ^system-release-201[4-9]\. ]]; then  #NOTE: not really future-proof
+
+  # Amazon Linux, for 2014.* use el7, older versions are unknown, perhaps el6
+  DIST_VERSION=7
+
+else
+
+  ## Using the redhat-release-server-X, centos-release-X, etc. pattern
+  ## extract the major version number of the distro
+  DIST_VERSION=$(echo $DISTRO_PKG | sed -r 's/^[[:alpha:]]+-release(-server|-workstation)?-([0-9]+).*$/\2/')
+
+  if ! [[ $DIST_VERSION =~ ^[0-9][0-9]?$ ]]; then
+
+    print_status "\
+Could not determine your distribution version, you may not be running a \
+supported version of Enterprise Linux. \
+Please contact NodeSource at \
+https://github.com/nodesource/distributions/issues if you think this is \
+incorrect. Include your 'distribution package' name: ${DISTRO_PKG}. \
+"
+    exit 1
+
+  fi
+
+fi
+
+
+## Given the distro, version and arch, construct the url for
+## the appropriate nodesource-release package (it's noarch but
+## we include the arch in the directory tree anyway)
+RELEASE_URL_VERSION_STRING="${DIST_TYPE}${DIST_VERSION}"
+RELEASE_URL="\
+https://rpm.nodesource.com/pub_8.x/\
+${DIST_TYPE}/\
+${DIST_VERSION}/\
+${DIST_ARCH}/\
+nodesource-release-${RELEASE_URL_VERSION_STRING}-1.noarch.rpm"
+
+#-check-distro-#
+
+print_status "Confirming \"${DIST_TYPE}${DIST_VERSION}-${DIST_ARCH}\" is supported..."
+
+## Simple fetch & fast-fail to see if the nodesource-release
+## file exists for this distro/version/arch
+exec_cmd_nobail "curl -sLf -o /dev/null '${RELEASE_URL}'"
+RC=$?
 
 if [[ $RC != 0 ]]; then
-    print_status "Your distribution, identified as \"${DISTRO}\", is not currently supported, please contact NodeSource at https://github.com/nodesource/distributions/issues if you think this is incorrect or would like your distribution to be considered for support"
+    print_status "\
+Your distribution, identified as \"${DISTRO_PKG}\", \
+is not currently supported, please contact NodeSource at \
+https://github.com/nodesource/distributions/issues \
+if you think this is incorrect or would like your distribution to be considered for support"
     exit 1
 fi
 
-if [ -f "/etc/apt/sources.list.d/chris-lea-node_js-$DISTRO.list" ]; then
-    print_status 'Removing Launchpad PPA Repository for NodeJS...'
+## EPEL is needed for EL5, we don't install it if it's missing but
+## we can give guidance
+if [ "$DIST_TYPE" == "el" ] && [ "$DIST_VERSION" == "5" ]; then
 
-    exec_cmd_nobail 'add-apt-repository -y -r ppa:chris-lea/node.js'
-    exec_cmd "rm -f /etc/apt/sources.list.d/chris-lea-node_js-${DISTRO}.list"
+  print_status "Checking if EPEL is enabled..."
+
+  echo "+ yum repolist enabled 2> /dev/null | grep epel"
+  repolist=$(yum repolist enabled 2> /dev/null | grep epel)
+
+  if [ "X${repolist}" == "X" ]; then
+    print_status "Finding current EPEL release RPM..."
+
+    ## We can scrape the html to find the latest epel-release (likely 5.4)
+    epel_url="http://dl.fedoraproject.org/pub/epel/5/${DIST_ARCH}/"
+    epel_release_view="${epel_url}repoview/epel-release.html"
+    echo "+ curl -s $epel_release_view | grep -oE 'epel-release-[0-9\-]+\.noarch\.rpm'"
+    epel=$(curl -s $epel_release_view | grep -oE 'epel-release-[0-9\-]+\.noarch\.rpm')
+    if [ "X${epel}" = "X" ]; then
+      print_status "Error: Could not find current EPEL release RPM!"
+      exit 1
+    fi
+
+    print_status "\
+The EPEL (Extra Packages for Enterprise Linux) repository is a\n\
+prerequisite for installing Node.js on your operating system. Please\n\
+add it and re-run this setup script.\n\
+\n\
+The EPEL repository RPM is available at:\n\
+  ${epel_url}${epel}\n\
+You can try installing with: \`rpm -ivh <url>\`\
+"
+
+    exit 1
+  fi
+
 fi
 
-print_status 'Adding the NodeSource signing key to your keyring...'
+print_status "Downloading release setup RPM..."
 
-if [ -x /usr/bin/curl ]; then
-    exec_cmd 'curl -s https://deb.nodesource.com/gpgkey/nodesource.gpg.key | apt-key add -'
-else
-    exec_cmd 'wget -qO- https://deb.nodesource.com/gpgkey/nodesource.gpg.key | apt-key add -'
+## Two-step process to install the nodesource-release RPM,
+## Download to a tmp file then install it directly with `rpm`.
+## We don't rely on RPM's ability to fetch from HTTPS directly
+echo "+ mktemp"
+RPM_TMP=$(mktemp || bail)
+
+exec_cmd "curl -sL -o '${RPM_TMP}' '${RELEASE_URL}'"
+
+print_status "Installing release setup RPM..."
+
+## --nosignature because nodesource-release contains the signature!
+exec_cmd "rpm -i --nosignature --force '${RPM_TMP}'"
+
+print_status "Cleaning up..."
+
+exec_cmd "rm -f '${RPM_TMP}'"
+
+print_status "Checking for existing installations..."
+
+## Nasty consequences if you have an existing Node or npm package
+## installed, need to inform if they are there
+echo "+ rpm -qa 'node|npm' | grep -v nodesource"
+EXISTING_NODE=$(rpm -qa 'node|npm|iojs' | grep -v nodesource)
+
+if [ "X${EXISTING_NODE}" != "X" ]; then
+
+  print_status "\
+Your system appears to already have Node.js installed from an alternative source.\n\
+Run \`\033[1myum remove -y nodejs npm\033[22m\` (as root) to remove these first.\
+"
+
 fi
 
-print_status "Creating apt sources list file for the NodeSource ${NODENAME} repo..."
+print_status "\
+Run \`\033[1myum install -y nodejs\033[22m\` (as root) to install Node.js 8.x and npm.\n\
+You may also need development tools to build native addons:\n\
+  \`yum install -y gcc-c++ make\`\
+"
 
-exec_cmd "echo 'deb https://deb.nodesource.com/${NODEREPO} ${DISTRO} main' > /etc/apt/sources.list.d/nodesource.list"
-exec_cmd "echo 'deb-src https://deb.nodesource.com/${NODEREPO} ${DISTRO} main' >> /etc/apt/sources.list.d/nodesource.list"
+## Alternative to install dev tools: `yum groupinstall 'Development Tools'
 
-print_status 'Running `apt-get update` for you...'
-
-exec_cmd 'apt-get update'
-
-node_deprecation_warning
-
-print_status "Run \`apt-get install ${NODEPKG}\` (as root) to install ${NODENAME} and npm"
-
-}
-
-## Defer setup until we have the complete script
-setup
+exit 0
