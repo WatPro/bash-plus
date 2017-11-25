@@ -1,4 +1,4 @@
-# Conda Installer for Linux 
+# Conda Installers for Linux 
 
 The [scripts](https://conda.io/docs/user-guide/install/linux.html#installing-on-linux "Installing on Linux") automate Conda installation on Linux.  
 
