@@ -1,0 +1,713 @@
+#!/bin/sh
+#
+# NAME:  Anaconda2
+# VER:   5.0.1
+# PLAT:  linux-32
+# BYTES:    433272941
+# LINES: 714
+# MD5:   37d86c60b132f2c035db9aa84bbacafa
+
+export OLD_LD_LIBRARY_PATH=$LD_LIBRARY_PATH
+unset LD_LIBRARY_PATH
+if ! echo "$0" | grep '\.sh$' > /dev/null; then
+    printf 'Please run using "bash" or "sh", but not "." or "source"\\n' >&2
+    return 1
+fi
+
+# Determine RUNNING_SHELL; if SHELL is non-zero use that.
+if [ -n "$SHELL" ]; then
+    RUNNING_SHELL="$SHELL"
+else
+    if [ "$(uname)" = "Darwin" ]; then
+        RUNNING_SHELL=/bin/bash
+    else
+        if [ -d /proc ] && [ -r /proc ] && [ -d /proc/$$ ] && [ -r /proc/$$ ] && [ -L /proc/$$/exe ] && [ -r /proc/$$/exe ]; then
+            RUNNING_SHELL=$(readlink /proc/$$/exe)
+        fi
+        if [ -z "$RUNNING_SHELL" ] || [ ! -f "$RUNNING_SHELL" ]; then
+            RUNNING_SHELL=$(ps -p $$ -o args= | sed 's|^-||')
+            case "$RUNNING_SHELL" in
+                */*)
+                    ;;
+                default)
+                    RUNNING_SHELL=$(which "$RUNNING_SHELL")
+                    ;;
+            esac
+        fi
+    fi
+fi
+
+# Some final fallback locations
+if [ -z "$RUNNING_SHELL" ] || [ ! -f "$RUNNING_SHELL" ]; then
+    if [ -f /bin/bash ]; then
+        RUNNING_SHELL=/bin/bash
+    else
+        if [ -f /bin/sh ]; then
+            RUNNING_SHELL=/bin/sh
+        fi
+    fi
+fi
+
+if [ -z "$RUNNING_SHELL" ] || [ ! -f "$RUNNING_SHELL" ]; then
+    printf 'Unable to determine your shell. Please set the SHELL env. var and re-run\\n' >&2
+    exit 1
+fi
+
+THIS_DIR=$(DIRNAME=$(dirname "$0"); cd "$DIRNAME"; pwd)
+THIS_FILE=$(basename "$0")
+THIS_PATH="$THIS_DIR/$THIS_FILE"
+PREFIX=$HOME/anaconda2
+BATCH=0
+FORCE=0
+SKIP_SCRIPTS=0
+TEST=0
+USAGE="
+usage: $0 [options]
+
+Installs Anaconda2 5.0.1
+
+-b           run install in batch mode (without manual intervention),
+             it is expected the license terms are agreed upon
+-f           no error if install prefix already exists
+-h           print this help message and exit
+-p PREFIX    install prefix, defaults to $PREFIX, must not contain spaces.
+-s           skip running pre/post-link/install scripts
+-u           update an existing installation
+-t           run package tests after installation (may install conda-build)
+"
+
+if which getopt > /dev/null 2>&1; then
+    OPTS=$(getopt bfhp:sut "$*" 2>/dev/null)
+    if [ ! $? ]; then
+        printf "%s\\n" "$USAGE"
+        exit 2
+    fi
+
+    eval set -- "$OPTS"
+
+    while true; do
+        case "$1" in
+            -h)
+                printf "%s\\n" "$USAGE"
+                exit 2
+                ;;
+            -b)
+                BATCH=1
+                shift
+                ;;
+            -f)
+                FORCE=1
+                shift
+                ;;
+            -p)
+                PREFIX="$2"
+                shift
+                shift
+                ;;
+            -s)
+                SKIP_SCRIPTS=1
+                shift
+                ;;
+            -u)
+                FORCE=1
+                shift
+                ;;
+            -t)
+                TEST=1
+                shift
+                ;;
+            --)
+                shift
+                break
+                ;;
+            *)
+                printf "ERROR: did not recognize option '%s', please try -h\\n" "$1"
+                exit 1
+                ;;
+        esac
+    done
+else
+    while getopts "bfhp:sut" x; do
+        case "$x" in
+            h)
+                printf "%s\\n" "$USAGE"
+                exit 2
+            ;;
+            b)
+                BATCH=1
+                ;;
+            f)
+                FORCE=1
+                ;;
+            p)
+                PREFIX="$OPTARG"
+                ;;
+            s)
+                SKIP_SCRIPTS=1
+                ;;
+            u)
+                FORCE=1
+                ;;
+            t)
+                TEST=1
+                ;;
+            ?)
+                printf "ERROR: did not recognize option '%s', please try -h\\n" "$x"
+                exit 1
+                ;;
+        esac
+    done
+fi
+
+if ! bzip2 --help >/dev/null 2>&1; then
+    printf "WARNING: bzip2 does not appear to be installed this may cause problems below\\n" >&2
+fi
+
+# verify the size of the installer
+if ! wc -c "$THIS_PATH" | grep    433272941 >/dev/null; then
+    printf "ERROR: size of %s should be    433272941 bytes\\n" "$THIS_FILE" >&2
+    exit 1
+fi
+
+if [ "$BATCH" = "0" ] # interactive mode
+then
+    if [ "$(uname -m)" = "x86_64" ]; then
+        printf "WARNING:\\n"
+        printf "    Your system is x86_64, but you are trying to install an x86 (32-bit)\\n"
+        printf "    version of Anaconda2.  Unless you have the necessary 32-bit libraries\\n"
+        printf "    installed, Anaconda2 will not work.\\n"
+        printf "    We STRONGLY recommend installing the x86_64 version of Anaconda2 on\\n"
+        printf "    an x86_64 system.\\n"
+        printf "    Are sure you want to continue the installation? [yes|no]\\n"
+        printf "[no] >>> "
+        read -r ans
+        if [ "$ans" != "yes" ] && [ "$ans" != "Yes" ] && [ "$ans" != "YES" ] && \
+           [ "$ans" != "y" ]   && [ "$ans" != "Y" ]
+        then
+            printf "Aborting installation\\n"
+            exit 2
+        fi
+    fi
+    printf "\\n"
+    printf "Welcome to Anaconda2 5.0.1\\n"
+    printf "\\n"
+    printf "In order to continue the installation process, please review the license\\n"
+    printf "agreement.\\n"
+    printf "Please, press ENTER to continue\\n"
+    printf ">>> "
+    read -r dummy
+    pager="cat"
+    if command -v "more" > /dev/null 2>&1; then
+      pager="more"
+    fi
+    "$pager" <<EOF
+===================================
+Anaconda End User License Agreement
+===================================
+
+Copyright 2015, Anaconda, Inc.
+
+All rights reserved under the 3-clause BSD License:
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+  * Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+  * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+  * Neither the name of Continuum Analytics, Inc. (dba Anaconda, Inc.) ("Continuum") nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL CONTINUUM BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+Notice of Third Party Software Licenses
+=======================================
+
+Anaconda contains open source software packages from third parties. These are available on an "as is" basis and subject to their individual license agreements. These licenses are available in Anaconda or at https://docs.anaconda.com/anaconda/packages/pkg-docs . Any binary packages of these third party tools you obtain via Anaconda are subject to their individual licenses as well as the Anaconda license. Continuum reserves the right to change which third party tools are provided in Anaconda.
+
+In particular, Anaconda contains re-distributable, run-time, shared-library files from the Intel(TM) Math Kernel Library ("MKL binaries"). You are specifically authorized to use the MKL binaries with your installation of Anaconda. You are also authorized to redistribute the MKL binaries with Anaconda or in the conda package that contains them. Use and redistribution of the MKL binaries are subject to the licensing terms located at https://software.intel.com/en-us/license/intel-simplified-software-license. If needed, instructions for removing the MKL binaries after installation of Anaconda are available at http://www.anaconda.com.
+
+Anaconda also contains cuDNN software binaries from NVIDIA Corporation ("cuDNN binaries"). You are specifically authorized to use the cuDNN binaries with your installation of Anaconda. You are also authorized to redistribute the cuDNN binaries with an Anaconda package that contains them. If needed, instructions for removing the cuDNN binaries after installation of Anaconda are available at http://www.anaconda.com.
+
+
+Cryptography Notice
+===================
+
+This distribution includes cryptographic software. The country in which you currently reside may have restrictions on the import, possession, use, and/or re-export to another country, of encryption software. BEFORE using any encryption software, please check your country's laws, regulations and policies concerning the import, possession, or use, and re-export of encryption software, to see if this is permitted. See the Wassenaar Arrangement <http://www.wassenaar.org/> for more information.
+
+Continuum has self-classified this software as Export Commodity Control Number (ECCN) 5D002.C.1, which includes information security software using or performing cryptographic functions with asymmetric algorithms. The form and manner of this distribution makes it eligible for export under the License Exception ENC Technology Software Unrestricted (TSU) exception (see the BIS Export Administration Regulations, Section 740.13) for both object code and source code. In addition, the Intel(TM) Math Kernel Library contained in Continuum's software is classified by Intel(TM) as ECCN 5D992b with no license required for export to non-embargoed countries.
+
+The following packages are included in this distribution that relate to cryptography:
+
+openssl
+    The OpenSSL Project is a collaborative effort to develop a robust, commercial-grade, full-featured, and Open Source toolkit implementing the Transport Layer Security (TLS) and Secure Sockets Layer (SSL) protocols as well as a full-strength general purpose cryptography library.
+
+pycrypto
+    A collection of both secure hash functions (such as SHA256 and RIPEMD160), and various encryption algorithms (AES, DES, RSA, ElGamal, etc.).
+
+pyopenssl
+    A thin Python wrapper around (a subset of) the OpenSSL library.
+
+kerberos (krb5, non-Windows platforms)
+    A network authentication protocol designed to provide strong authentication for client/server applications by using secret-key cryptography.
+
+cryptography
+    A Python library which exposes cryptographic recipes and primitives.
+
+EOF
+    printf "\\n"
+    printf "Do you accept the license terms? [yes|no]\\n"
+    printf "[no] >>> "
+    read -r ans
+    while [ "$ans" != "yes" ] && [ "$ans" != "Yes" ] && [ "$ans" != "YES" ] && \
+          [ "$ans" != "no" ]  && [ "$ans" != "No" ]  && [ "$ans" != "NO" ]
+    do
+        printf "Please answer 'yes' or 'no':'\\n"
+        printf ">>> "
+        read -r ans
+    done
+    if [ "$ans" != "yes" ] && [ "$ans" != "Yes" ] && [ "$ans" != "YES" ]
+    then
+        printf "The license agreement wasn't approved, aborting installation.\\n"
+        exit 2
+    fi
+    printf "\\n"
+    printf "Anaconda2 will now be installed into this location:\\n"
+    printf "%s\\n" "$PREFIX"
+    printf "\\n"
+    printf "  - Press ENTER to confirm the location\\n"
+    printf "  - Press CTRL-C to abort the installation\\n"
+    printf "  - Or specify a different location below\\n"
+    printf "\\n"
+    printf "[%s] >>> " "$PREFIX"
+    read -r user_prefix
+    if [ "$user_prefix" != "" ]; then
+        case "$user_prefix" in
+            *\ * )
+                printf "ERROR: Cannot install into directories with spaces\\n" >&2
+                exit 1
+                ;;
+            *)
+                eval PREFIX="$user_prefix"
+                ;;
+        esac
+    fi
+fi # !BATCH
+
+case "$PREFIX" in
+    *\ * )
+        printf "ERROR: Cannot install into directories with spaces\\n" >&2
+        exit 1
+        ;;
+esac
+
+if [ "$FORCE" = "0" ] && [ -e "$PREFIX" ]; then
+    printf "ERROR: File or directory already exists: '%s'\\n" "$PREFIX" >&2
+    printf "If you want to update an existing installation, use the -u option.\\n" >&2
+    exit 1
+fi
+
+
+if ! mkdir -p "$PREFIX"; then
+    printf "ERROR: Could not create directory: '%s'\\n" "$PREFIX" >&2
+    exit 1
+fi
+
+PREFIX=$(cd "$PREFIX"; pwd)
+export PREFIX
+
+printf "PREFIX=%s\\n" "$PREFIX"
+
+# verify the MD5 sum of the tarball appended to this header
+MD5=$(tail -n +714 "$THIS_PATH" | md5sum -)
+if ! echo "$MD5" | grep 37d86c60b132f2c035db9aa84bbacafa >/dev/null; then
+    printf "WARNING: md5sum mismatch of tar archive\\n" >&2
+    printf "expected: 37d86c60b132f2c035db9aa84bbacafa\\n" >&2
+    printf "     got: %s\\n" "$MD5" >&2
+fi
+
+# extract the tarball appended to this header, this creates the *.tar.bz2 files
+# for all the packages which get installed below
+cd "$PREFIX"
+
+
+if ! tail -n +714 "$THIS_PATH" | tar xf -; then
+    printf "ERROR: could not extract tar starting at line 714\\n" >&2
+    exit 1
+fi
+
+PRECONDA="$PREFIX/preconda.tar.bz2"
+bunzip2 -c $PRECONDA | tar -xf - --no-same-owner || exit 1
+rm -f $PRECONDA
+
+PYTHON="$PREFIX/bin/python"
+MSGS="$PREFIX/.messages.txt"
+touch "$MSGS"
+export FORCE
+
+install_dist()
+{
+    # This function installs a conda package into prefix, but without linking
+    # the conda packages.  It untars the package and calls a simple script
+    # which does the post extract steps (update prefix files, run 'post-link',
+    # and creates the conda metadata).  Note that this is all done without
+    # conda.
+    printf "installing: %s ...\\n" "$1"
+    PKG_PATH="$PREFIX"/pkgs/$1
+    PKG="$PKG_PATH".tar.bz2
+    mkdir -p $PKG_PATH || exit 1
+    bunzip2 -c "$PKG" | tar -xf - -C "$PKG_PATH" --no-same-owner || exit 1
+    "$PREFIX/pkgs/python-2.7.14-h41cc02d_21/bin/python" -E -s \
+        "$PREFIX"/pkgs/.install.py $INST_OPT --root-prefix="$PREFIX" --link-dist="$1" || exit 1
+    if [ "$1" = "python-2.7.14-h41cc02d_21" ]; then
+        if ! "$PYTHON" -E -V; then
+            printf "ERROR:\\n" >&2
+            printf "cannot execute native linux-32 binary, output from 'uname -a' is:\\n" >&2
+            uname -a >&2
+            exit 1
+        fi
+    fi
+}
+
+install_dist python-2.7.14-h41cc02d_21
+install_dist ca-certificates-2017.08.26-h1d4fec5_0
+install_dist conda-env-2.6.0-h36134e3_0
+install_dist intel-openmp-2018.0.0-h76c16ec_7
+install_dist libgcc-ng-7.2.0-h7cc24e2_2
+install_dist libgfortran-ng-7.2.0-h9f7466a_2
+install_dist libstdcxx-ng-7.2.0-h7a57d05_2
+install_dist bzip2-1.0.6-h33f679c_1
+install_dist expat-2.2.4-hfc6b5b2_1
+install_dist gmp-6.1.2-hf7948e7_0
+install_dist graphite2-1.3.10-h8f21b5a_0
+install_dist icu-58.2-haa6b2a4_0
+install_dist jbig-2.1-hfc6e72a_0
+install_dist jpeg-9b-h5cb717a_1
+install_dist libffi-3.2.1-h9e1e044_3
+install_dist libsodium-1.0.13-hd3696a5_2
+install_dist libssh2-1.8.0-hdbf2284_2
+install_dist libtool-2.4.6-hbcda39f_0
+install_dist libxcb-1.12-h352626f_3
+install_dist lzo-2.10-h57fe4c7_1
+install_dist mkl-2018.0.0-haa892f1_4
+install_dist ncurses-6.0-hdbb8b83_1
+install_dist openssl-1.0.2l-h38d746a_5
+install_dist patchelf-0.9-hd2f9bfa_2
+install_dist pcre-8.41-ha5284a1_0
+install_dist pixman-0.34.0-h0486643_2
+install_dist tk-8.6.7-he6a46c3_1
+install_dist unixodbc-2.3.4-h090bd3b_1
+install_dist xz-5.2.3-h6182ff5_1
+install_dist yaml-0.1.7-hd5ee3ad_1
+install_dist zlib-1.2.11-h57a7a75_1
+install_dist curl-7.55.1-hecc94b8_3
+install_dist glib-2.53.6-hd466c72_1
+install_dist hdf5-1.10.1-h7ec8fea_0
+install_dist libedit-3.1-h9ac1fc1_0
+install_dist libpng-1.6.32-hadfe4f0_2
+install_dist libtiff-4.0.8-hf9a840b_9
+install_dist libxml2-2.9.4-h9f6e0ef_5
+install_dist mpfr-3.1.5-hbba56d0_1
+install_dist pandoc-1.15.0.6-h57d12dc_1
+install_dist readline-7.0-h4f40f53_3
+install_dist zeromq-4.2.2-ha8cf27b_1
+install_dist dbus-1.10.22-ha863c99_0
+install_dist freetype-2.8-h913af36_0
+install_dist gstreamer-1.12.2-ha52c2f3_0
+install_dist libxslt-1.1.29-hbe034b6_5
+install_dist mpc-1.0.3-hf88a570_4
+install_dist sqlite-3.20.1-he1c59fe_1
+install_dist fontconfig-2.12.4-hcb742b8_1
+install_dist gst-plugins-base-1.12.2-h3b3eec3_0
+install_dist alabaster-0.7.10-py27he3f532e_0
+install_dist asn1crypto-0.22.0-py27he97fa27_1
+install_dist backports-1.0-py27hb64581b_1
+install_dist backports_abc-0.5-py27h9bc149d_0
+install_dist beautifulsoup4-4.6.0-py27hdc1f29e_0
+install_dist bitarray-0.8.1-py27h1c1c28f_0
+install_dist boto-2.48.0-py27hc2a4e05_1
+install_dist cairo-1.14.10-h9c83351_5
+install_dist cdecimal-2.3-py27h046525c_1
+install_dist certifi-2017.7.27.1-py27h7859e83_0
+install_dist chardet-3.0.4-py27h24ac8b0_1
+install_dist click-6.7-py27h2a74859_0
+install_dist cloudpickle-0.4.0-py27hee398be_0
+install_dist colorama-0.3.9-py27h2febfda_0
+install_dist configparser-3.5.0-py27h61e3d3c_0
+install_dist contextlib2-0.5.5-py27ha920592_0
+install_dist dask-core-0.15.3-py27he8fe89d_0
+install_dist decorator-4.1.2-py27hafe0182_0
+install_dist docutils-0.14-py27hd690462_0
+install_dist enum34-1.1.6-py27h85d59be_1
+install_dist et_xmlfile-1.0.1-py27hab7f03f_0
+install_dist fastcache-1.0.2-py27hc58c06c_0
+install_dist filelock-2.0.12-py27h488b24b_0
+install_dist funcsigs-1.0.2-py27h29a4f71_0
+install_dist functools32-3.2.3.2-py27h21e16bb_1
+install_dist futures-3.1.1-py27hd7e6af8_0
+install_dist glob2-0.5-py27hb0a6d72_0
+install_dist gmpy2-2.0.8-py27hdfa490b_1
+install_dist greenlet-0.4.12-py27ha36fef7_0
+install_dist grin-1.2.1-py27heff8b80_1
+install_dist heapdict-1.0.0-py27h003bc60_0
+install_dist idna-2.6-py27ha1b4782_1
+install_dist imagesize-0.7.1-py27h11efc49_0
+install_dist ipaddress-1.0.18-py27h087eb74_0
+install_dist ipython_genutils-0.2.0-py27h4d953cd_0
+install_dist itsdangerous-0.24-py27hddbc14e_1
+install_dist jdcal-1.3-py27hce892e4_0
+install_dist jedi-0.10.2-py27he64c2f9_0
+install_dist lazy-object-proxy-1.3.1-py27h2d3dcdf_0
+install_dist locket-0.2.0-py27h064ca21_1
+install_dist lxml-4.1.0-py27h3f9aec1_0
+install_dist markupsafe-1.0-py27h839129c_1
+install_dist mccabe-0.6.1-py27h526dcb2_0
+install_dist mistune-0.7.4-py27h2b58aae_0
+install_dist mkl-service-1.1.2-py27h53f8b2f_4
+install_dist mpmath-0.19-py27h4bb3926_2
+install_dist msgpack-python-0.4.8-py27h104250f_0
+install_dist multipledispatch-0.4.9-py27h4d2d4b4_0
+install_dist numpy-1.13.3-py27h23621b1_0
+install_dist olefile-0.44-py27hb362403_0
+install_dist pandocfilters-1.4.2-py27h1b509f9_1
+install_dist path.py-10.3.1-py27hcf99604_0
+install_dist pep8-1.7.0-py27h756d74c_0
+install_dist pkginfo-1.4.1-py27hb7e1349_0
+install_dist ply-3.10-py27h73bdaed_0
+install_dist psutil-5.4.0-py27h4c89b83_0
+install_dist ptyprocess-0.5.2-py27h31df44e_0
+install_dist py-1.4.34-py27h6b77736_1
+install_dist pycodestyle-2.3.1-py27h2921fce_0
+install_dist pycosat-0.6.2-py27h748140f_0
+install_dist pycparser-2.18-py27h94f9063_1
+install_dist pycrypto-2.6.1-py27h7358e49_1
+install_dist pycurl-7.43.0-py27hc2f6732_3
+install_dist pyodbc-4.0.17-py27h2a4c5e9_0
+install_dist pyparsing-2.2.0-py27h7e35c21_0
+install_dist pysocks-1.6.7-py27hb9e654a_1
+install_dist pytz-2017.2-py27hb75e0dc_0
+install_dist pyyaml-3.12-py27ha87a174_1
+install_dist pyzmq-16.0.2-py27hae68080_2
+install_dist qt-5.6.2-h6a616b1_12
+install_dist qtpy-1.3.1-py27h12bc369_0
+install_dist rope-0.10.5-py27h4e5ea01_0
+install_dist ruamel_yaml-0.11.14-py27h060dd3b_2
+install_dist scandir-1.6-py27h9c66499_0
+install_dist simplegeneric-0.8.1-py27h6caa5d4_0
+install_dist sip-4.18.1-py27ha738a01_2
+install_dist six-1.11.0-py27h0b002a5_1
+install_dist snowballstemmer-1.2.1-py27hb20ed2b_0
+install_dist sortedcontainers-1.5.7-py27h8f414ee_0
+install_dist sphinxcontrib-1.0-py27h7b326f5_1
+install_dist sqlalchemy-1.1.13-py27h9cb9e8f_0
+install_dist subprocess32-3.2.7-py27h81a5196_0
+install_dist tblib-1.3.2-py27hb9b59cf_0
+install_dist toolz-0.8.2-py27h5cc7685_0
+install_dist typing-3.6.2-py27h070389f_0
+install_dist unicodecsv-0.14.1-py27h20f5ce7_0
+install_dist wcwidth-0.1.7-py27hf3ca5ac_0
+install_dist webencodings-0.5.1-py27h453cfa3_1
+install_dist werkzeug-0.12.2-py27h3edbb0e_0
+install_dist wrapt-1.10.11-py27h6206ed2_0
+install_dist xlrd-1.1.0-py27hf0baba9_1
+install_dist xlsxwriter-1.0.2-py27h4b000d9_0
+install_dist xlwt-1.3.0-py27h3e1ec3a_0
+install_dist babel-2.5.0-py27h5a839de_0
+install_dist backports.shutil_get_terminal_size-1.0.0-py27h0f63e47_2
+install_dist bottleneck-1.2.1-py27h14d01b9_0
+install_dist cffi-1.10.0-py27hb6f8fb9_1
+install_dist conda-verify-2.0.0-py27hb42ed20_0
+install_dist cycler-0.10.0-py27h2f912ad_0
+install_dist cytoolz-0.8.2-py27h4057e0e_0
+install_dist entrypoints-0.2.3-py27h78db392_2
+install_dist h5py-2.7.0-py27h2923878_1
+install_dist harfbuzz-1.5.0-hc3e4629_0
+install_dist html5lib-0.999999999-py27h801893a_0
+install_dist llvmlite-0.20.0-py27_0
+install_dist networkx-2.0-py27hb79c5c0_0
+install_dist nltk-3.2.4-py27h1c446e4_0
+install_dist numexpr-2.6.2-py27hb69c5b2_1
+install_dist openpyxl-2.4.8-py27h3b04e60_1
+install_dist packaging-16.8-py27hfbc3cc8_0
+install_dist partd-0.3.8-py27h06e8ba1_0
+install_dist pathlib2-2.3.0-py27h74d497f_0
+install_dist pexpect-4.2.1-py27hc44a84e_0
+install_dist pillow-4.2.1-py27h3b32289_0
+install_dist pycairo-1.13.3-py27h308f392_0
+install_dist pyqt-5.6.0-py27he5ca9ac_5
+install_dist python-dateutil-2.6.1-py27h143d6b4_1
+install_dist pywavelets-0.5.2-py27hac21318_0
+install_dist qtawesome-0.4.4-py27hb06a68d_0
+install_dist scipy-0.19.1-py27hcc942fa_3
+install_dist setuptools-36.5.0-py27hdccd021_0
+install_dist singledispatch-3.4.0.3-py27hdadf425_0
+install_dist sortedcollections-0.5.3-py27h0fd999a_0
+install_dist sphinxcontrib-websupport-1.0.1-py27h7b8a74c_1
+install_dist ssl_match_hostname-3.5.0.1-py27h04b2e81_2
+install_dist sympy-1.1.1-py27hbf3988f_0
+install_dist traitlets-4.3.2-py27h11cbc56_0
+install_dist zict-0.1.3-py27ha09170c_0
+install_dist backports.functools_lru_cache-1.4-py27h6ceb8f2_1
+install_dist bleach-2.0.0-py27h907b799_0
+install_dist clyent-1.2.2-py27h949c5bf_0
+install_dist cryptography-2.0.3-py27h1a61409_1
+install_dist cython-0.26.1-py27hb0b686f_0
+install_dist datashape-0.5.4-py27h0d2398c_0
+install_dist get_terminal_size-1.0.0-hb836b69_0
+install_dist gevent-1.2.2-py27h5e89de3_0
+install_dist imageio-2.2.0-py27he2e8217_0
+install_dist isort-4.2.15-py27h7bf2ae6_0
+install_dist jinja2-2.9.6-py27h37d0218_1
+install_dist jsonschema-2.6.0-py27hada1287_0
+install_dist jupyter_core-4.3.0-py27h52ea6e6_0
+install_dist navigator-updater-0.1.0-py27h54d49df_0
+install_dist nose-1.3.7-py27h7a963b6_2
+install_dist numba-0.35.0-np113py27_10
+install_dist pandas-0.20.3-py27h1bd68b7_2
+install_dist pango-1.40.11-h523ddf7_0
+install_dist patsy-0.4.1-py27h0f45a02_0
+install_dist pickleshare-0.7.4-py27h17abb85_0
+install_dist pyflakes-1.6.0-py27haf8e23a_0
+install_dist pygments-2.2.0-py27hac04531_0
+install_dist pytables-3.4.2-py27had550fc_2
+install_dist pytest-3.2.1-py27hde36796_1
+install_dist scikit-learn-0.19.1-py27hfd27e09_0
+install_dist testpath-0.3.1-py27he84b18d_0
+install_dist tornado-4.5.2-py27h35f098b_0
+install_dist wheel-0.29.0-py27h1daca49_1
+install_dist astroid-1.5.3-py27h453f6f2_0
+install_dist astropy-2.0.2-py27ha2c03c0_3
+install_dist bkcharts-0.2-py27h29c140c_0
+install_dist bokeh-0.12.10-py27hb1b022d_0
+install_dist distributed-1.19.1-py27h8a1f6ab_0
+install_dist flask-0.12.2-py27hd462543_0
+install_dist jupyter_client-5.1.0-py27hcbcd5df_0
+install_dist matplotlib-2.1.0-py27h7196adb_0
+install_dist nbformat-4.4.0-py27hbecc959_0
+install_dist pip-9.0.1-py27hc3e315b_3
+install_dist prompt_toolkit-1.0.15-py27h7ce79c5_0
+install_dist pyopenssl-17.2.0-py27h050d878_0
+install_dist statsmodels-0.8.0-py27h29ccae8_0
+install_dist terminado-0.6-py27h1cf3fa7_0
+install_dist dask-0.15.3-py27h593a644_0
+install_dist flask-cors-3.0.3-py27h0c0a84e_0
+install_dist ipython-5.4.1-py27hedf7bbf_1
+install_dist nbconvert-5.3.1-py27h41bde99_0
+install_dist pylint-1.7.4-py27hcc3bb28_0
+install_dist seaborn-0.8.0-py27h153b718_0
+install_dist urllib3-1.22-py27h2188871_0
+install_dist ipykernel-4.6.1-py27hff5e13b_0
+install_dist odo-0.5.1-py27h6d97d83_0
+install_dist requests-2.18.4-py27h4637c99_1
+install_dist scikit-image-0.13.0-py27h71fd5a1_1
+install_dist anaconda-client-1.6.5-py27h714b746_0
+install_dist blaze-0.11.3-py27he646096_0
+install_dist conda-4.3.30-py27hba039c0_0
+install_dist jupyter_console-5.2.0-py27had85155_1
+install_dist notebook-5.0.0-py27hafafe8e_2
+install_dist qtconsole-4.3.1-py27h45d58bd_0
+install_dist sphinx-1.6.3-py27h69a4240_0
+install_dist anaconda-project-0.8.0-py27h8b7eb42_0
+install_dist conda-build-3.0.27-py27h2b69182_0
+install_dist jupyterlab_launcher-0.4.0-py27hcdef05b_0
+install_dist numpydoc-0.7.0-py27hd3102cd_0
+install_dist widgetsnbextension-3.0.2-py27h753d1a3_1
+install_dist anaconda-navigator-1.6.9-py27h7ffe22d_0
+install_dist ipywidgets-7.0.0-py27hf5cc119_0
+install_dist jupyterlab-0.27.0-py27hb56861d_2
+install_dist spyder-3.2.4-py27hac674ad_0
+install_dist _ipyw_jlab_nb_ext_conf-0.1.0-py27h826b7e8_0
+install_dist jupyter-1.0.0-py27ha2528b6_0
+install_dist anaconda-5.0.1-py27h4e9d9df_1
+
+
+mkdir -p $PREFIX/envs
+
+if [ "$FORCE" = "1" ]; then
+    "$PYTHON" -E -s "$PREFIX"/pkgs/.install.py --rm-dup || exit 1
+fi
+
+cat "$MSGS"
+rm -f "$MSGS"
+$PYTHON -E -s "$PREFIX/pkgs/.cio-config.py" "$THIS_PATH" || exit 1
+printf "installation finished.\\n"
+
+if [ "$PYTHONPATH" != "" ]; then
+    printf "WARNING:\\n"
+    printf "    You currently have a PYTHONPATH environment variable set. This may cause\\n"
+    printf "    unexpected behavior when running the Python interpreter in Anaconda2.\\n"
+    printf "    For best results, please verify that your PYTHONPATH only points to\\n"
+    printf "    directories of packages that are compatible with the Python interpreter\\n"
+    printf "    in Anaconda2: $PREFIX\\n"
+fi
+
+if [ "$BATCH" = "0" ]; then
+    # Interactive mode.
+    BASH_RC="$HOME"/.bashrc
+    DEFAULT=no
+    printf "Do you wish the installer to prepend the Anaconda2 install location\\n"
+    printf "to PATH in your %s ? [yes|no]\\n" "$BASH_RC"
+    printf "[%s] >>> " "$DEFAULT"
+    read -r ans
+    if [ "$ans" = "" ]; then
+        ans=$DEFAULT
+    fi
+    if [ "$ans" != "yes" ] && [ "$ans" != "Yes" ] && [ "$ans" != "YES" ] && \
+       [ "$ans" != "y" ]   && [ "$ans" != "Y" ]
+    then
+        printf "\\n"
+        printf "You may wish to edit your .bashrc to prepend the Anaconda2 install location to PATH:\\n"
+        printf "\\n"
+        printf "export PATH=%s/bin:\$PATH\\n" "$PREFIX"
+        printf "\\n"
+    else
+        if [ -f "$BASH_RC" ]; then
+            printf "\\n"
+            printf "Appending source %s/bin/activate to %s\\n" "$PREFIX" "$BASH_RC"
+            printf "A backup will be made to: %s-anaconda2.bak\\n" "$BASH_RC"
+            printf "\\n"
+            cp "$BASH_RC" "${BASH_RC}"-anaconda2.bak
+        else
+            printf "\\n"
+            printf "Appending source %s/bin/activate in\\n" "$PREFIX"
+            printf "newly created %s\\n" "$BASH_RC"
+        fi
+        printf "\\n"
+        printf "For this change to become active, you have to open a new terminal.\\n"
+        printf "\\n"
+        printf "\\n" >> "$BASH_RC"
+        printf "# added by Anaconda2 installer\\n"            >> "$BASH_RC"
+        printf "export PATH=\"%s/bin:\$PATH\"\\n" "$PREFIX"  >> "$BASH_RC"
+    fi
+
+    printf "Thank you for installing Anaconda2!\\n"
+fi # !BATCH
+
+if [ "$TEST" = "1" ]; then
+    printf "INFO: Running package tests in a subshell\\n"
+    (. "$PREFIX"/bin/activate
+     which conda-build > /dev/null 2>&1 || conda install -y conda-build
+     if [ ! -d "$PREFIX"/conda-bld/linux-32 ]; then
+         mkdir -p "$PREFIX"/conda-bld/linux-32
+     fi
+     cp -f "$PREFIX"/pkgs/*.tar.bz2 "$PREFIX"/conda-bld/linux-32/
+     conda index "$PREFIX"/conda-bld/linux-32/
+     conda-build --override-channels --channel local --test --keep-going "$PREFIX"/conda-bld/linux-32/*.tar.bz2
+    )
+    NFAILS=$?
+    if [ "$NFAILS" != "0" ]; then
+        if [ "$NFAILS" = "1" ]; then
+            printf "ERROR: 1 test failed\\n" >&2
+            printf "To re-run the tests for the above failed package, please enter:\\n"
+            printf ". %s/bin/activate\\n" "$PREFIX"
+            printf "conda-build --override-channels --channel local --test <full-path-to-failed.tar.bz2>\\n"
+        else
+            printf "ERROR: %s test failed\\n" $NFAILS >&2
+            printf "To re-run the tests for the above failed packages, please enter:\\n"
+            printf ". %s/bin/activate\\n" "$PREFIX"
+            printf "conda-build --override-channels --channel local --test <full-path-to-failed.tar.bz2>\\n"
+        fi
+        exit $NFAILS
+    fi
+fi
+
+exit 0
+@@END_HEADER@@

@@ -1,0 +1,495 @@
+#!/bin/sh
+#
+# NAME:  Miniconda2
+# VER:   4.3.30
+# PLAT:  linux-32
+# BYTES:     32950349
+# LINES: 496
+# MD5:   2fbc902850c5401dd8056fdb943a3930
+
+export OLD_LD_LIBRARY_PATH=$LD_LIBRARY_PATH
+unset LD_LIBRARY_PATH
+if ! echo "$0" | grep '\.sh$' > /dev/null; then
+    printf 'Please run using "bash" or "sh", but not "." or "source"\\n' >&2
+    return 1
+fi
+
+# Determine RUNNING_SHELL; if SHELL is non-zero use that.
+if [ -n "$SHELL" ]; then
+    RUNNING_SHELL="$SHELL"
+else
+    if [ "$(uname)" = "Darwin" ]; then
+        RUNNING_SHELL=/bin/bash
+    else
+        if [ -d /proc ] && [ -r /proc ] && [ -d /proc/$$ ] && [ -r /proc/$$ ] && [ -L /proc/$$/exe ] && [ -r /proc/$$/exe ]; then
+            RUNNING_SHELL=$(readlink /proc/$$/exe)
+        fi
+        if [ -z "$RUNNING_SHELL" ] || [ ! -f "$RUNNING_SHELL" ]; then
+            RUNNING_SHELL=$(ps -p $$ -o args= | sed 's|^-||')
+            case "$RUNNING_SHELL" in
+                */*)
+                    ;;
+                default)
+                    RUNNING_SHELL=$(which "$RUNNING_SHELL")
+                    ;;
+            esac
+        fi
+    fi
+fi
+
+# Some final fallback locations
+if [ -z "$RUNNING_SHELL" ] || [ ! -f "$RUNNING_SHELL" ]; then
+    if [ -f /bin/bash ]; then
+        RUNNING_SHELL=/bin/bash
+    else
+        if [ -f /bin/sh ]; then
+            RUNNING_SHELL=/bin/sh
+        fi
+    fi
+fi
+
+if [ -z "$RUNNING_SHELL" ] || [ ! -f "$RUNNING_SHELL" ]; then
+    printf 'Unable to determine your shell. Please set the SHELL env. var and re-run\\n' >&2
+    exit 1
+fi
+
+THIS_DIR=$(DIRNAME=$(dirname "$0"); cd "$DIRNAME"; pwd)
+THIS_FILE=$(basename "$0")
+THIS_PATH="$THIS_DIR/$THIS_FILE"
+PREFIX=$HOME/miniconda2
+BATCH=0
+FORCE=0
+SKIP_SCRIPTS=0
+TEST=0
+USAGE="
+usage: $0 [options]
+
+Installs Miniconda2 4.3.30
+
+-b           run install in batch mode (without manual intervention),
+             it is expected the license terms are agreed upon
+-f           no error if install prefix already exists
+-h           print this help message and exit
+-p PREFIX    install prefix, defaults to $PREFIX, must not contain spaces.
+-s           skip running pre/post-link/install scripts
+-u           update an existing installation
+-t           run package tests after installation (may install conda-build)
+"
+
+if which getopt > /dev/null 2>&1; then
+    OPTS=$(getopt bfhp:sut "$*" 2>/dev/null)
+    if [ ! $? ]; then
+        printf "%s\\n" "$USAGE"
+        exit 2
+    fi
+
+    eval set -- "$OPTS"
+
+    while true; do
+        case "$1" in
+            -h)
+                printf "%s\\n" "$USAGE"
+                exit 2
+                ;;
+            -b)
+                BATCH=1
+                shift
+                ;;
+            -f)
+                FORCE=1
+                shift
+                ;;
+            -p)
+                PREFIX="$2"
+                shift
+                shift
+                ;;
+            -s)
+                SKIP_SCRIPTS=1
+                shift
+                ;;
+            -u)
+                FORCE=1
+                shift
+                ;;
+            -t)
+                TEST=1
+                shift
+                ;;
+            --)
+                shift
+                break
+                ;;
+            *)
+                printf "ERROR: did not recognize option '%s', please try -h\\n" "$1"
+                exit 1
+                ;;
+        esac
+    done
+else
+    while getopts "bfhp:sut" x; do
+        case "$x" in
+            h)
+                printf "%s\\n" "$USAGE"
+                exit 2
+            ;;
+            b)
+                BATCH=1
+                ;;
+            f)
+                FORCE=1
+                ;;
+            p)
+                PREFIX="$OPTARG"
+                ;;
+            s)
+                SKIP_SCRIPTS=1
+                ;;
+            u)
+                FORCE=1
+                ;;
+            t)
+                TEST=1
+                ;;
+            ?)
+                printf "ERROR: did not recognize option '%s', please try -h\\n" "$x"
+                exit 1
+                ;;
+        esac
+    done
+fi
+
+if ! bzip2 --help >/dev/null 2>&1; then
+    printf "WARNING: bzip2 does not appear to be installed this may cause problems below\\n" >&2
+fi
+
+# verify the size of the installer
+if ! wc -c "$THIS_PATH" | grep     32950349 >/dev/null; then
+    printf "ERROR: size of %s should be     32950349 bytes\\n" "$THIS_FILE" >&2
+    exit 1
+fi
+
+if [ "$BATCH" = "0" ] # interactive mode
+then
+    if [ "$(uname -m)" = "x86_64" ]; then
+        printf "WARNING:\\n"
+        printf "    Your system is x86_64, but you are trying to install an x86 (32-bit)\\n"
+        printf "    version of Miniconda2.  Unless you have the necessary 32-bit libraries\\n"
+        printf "    installed, Miniconda2 will not work.\\n"
+        printf "    We STRONGLY recommend installing the x86_64 version of Miniconda2 on\\n"
+        printf "    an x86_64 system.\\n"
+        printf "    Are sure you want to continue the installation? [yes|no]\\n"
+        printf "[no] >>> "
+        read -r ans
+        if [ "$ans" != "yes" ] && [ "$ans" != "Yes" ] && [ "$ans" != "YES" ] && \
+           [ "$ans" != "y" ]   && [ "$ans" != "Y" ]
+        then
+            printf "Aborting installation\\n"
+            exit 2
+        fi
+    fi
+    printf "\\n"
+    printf "Welcome to Miniconda2 4.3.30\\n"
+    printf "\\n"
+    printf "In order to continue the installation process, please review the license\\n"
+    printf "agreement.\\n"
+    printf "Please, press ENTER to continue\\n"
+    printf ">>> "
+    read -r dummy
+    pager="cat"
+    if command -v "more" > /dev/null 2>&1; then
+      pager="more"
+    fi
+    "$pager" <<EOF
+====================================
+Miniconda End User License Agreement
+====================================
+
+Copyright 2015, Anaconda, Inc.
+
+All rights reserved under the 3-clause BSD License:
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+  * Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+  * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+  * Neither the name of Continuum Analytics, Inc. (dba Anaconda, Inc.) ("Continuum") nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL CONTINUUM BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+Notice of Third Party Software Licenses
+=======================================
+
+Miniconda contains open source software packages from third parties. These are available on an "as is" basis and subject to their individual license agreements. These licenses are available in Anaconda or at https://docs.anaconda.com/anaconda/packages/pkg-docs . Any binary packages of these third party tools you obtain via Anaconda are subject to their individual licenses as well as the Anaconda license. Continuum reserves the right to change which third party tools are provided in Miniconda.
+
+
+
+
+Cryptography Notice
+===================
+
+This distribution includes cryptographic software. The country in which you currently reside may have restrictions on the import, possession, use, and/or re-export to another country, of encryption software. BEFORE using any encryption software, please check your country's laws, regulations and policies concerning the import, possession, or use, and re-export of encryption software, to see if this is permitted. See the Wassenaar Arrangement <http://www.wassenaar.org/> for more information.
+
+Continuum has self-classified this software as Export Commodity Control Number (ECCN) 5D002.C.1, which includes information security software using or performing cryptographic functions with asymmetric algorithms. The form and manner of this distribution makes it eligible for export under the License Exception ENC Technology Software Unrestricted (TSU) exception (see the BIS Export Administration Regulations, Section 740.13) for both object code and source code. In addition, the Intel(TM) Math Kernel Library contained in Continuum's software is classified by Intel(TM) as ECCN 5D992b with no license required for export to non-embargoed countries.
+
+The following packages are included in this distribution that relate to cryptography:
+
+openssl
+    The OpenSSL Project is a collaborative effort to develop a robust, commercial-grade, full-featured, and Open Source toolkit implementing the Transport Layer Security (TLS) and Secure Sockets Layer (SSL) protocols as well as a full-strength general purpose cryptography library.
+
+pycrypto
+    A collection of both secure hash functions (such as SHA256 and RIPEMD160), and various encryption algorithms (AES, DES, RSA, ElGamal, etc.).
+
+pyopenssl
+    A thin Python wrapper around (a subset of) the OpenSSL library.
+
+kerberos (krb5, non-Windows platforms)
+    A network authentication protocol designed to provide strong authentication for client/server applications by using secret-key cryptography.
+
+cryptography
+    A Python library which exposes cryptographic recipes and primitives.
+
+EOF
+    printf "\\n"
+    printf "Do you accept the license terms? [yes|no]\\n"
+    printf "[no] >>> "
+    read -r ans
+    while [ "$ans" != "yes" ] && [ "$ans" != "Yes" ] && [ "$ans" != "YES" ] && \
+          [ "$ans" != "no" ]  && [ "$ans" != "No" ]  && [ "$ans" != "NO" ]
+    do
+        printf "Please answer 'yes' or 'no':'\\n"
+        printf ">>> "
+        read -r ans
+    done
+    if [ "$ans" != "yes" ] && [ "$ans" != "Yes" ] && [ "$ans" != "YES" ]
+    then
+        printf "The license agreement wasn't approved, aborting installation.\\n"
+        exit 2
+    fi
+    printf "\\n"
+    printf "Miniconda2 will now be installed into this location:\\n"
+    printf "%s\\n" "$PREFIX"
+    printf "\\n"
+    printf "  - Press ENTER to confirm the location\\n"
+    printf "  - Press CTRL-C to abort the installation\\n"
+    printf "  - Or specify a different location below\\n"
+    printf "\\n"
+    printf "[%s] >>> " "$PREFIX"
+    read -r user_prefix
+    if [ "$user_prefix" != "" ]; then
+        case "$user_prefix" in
+            *\ * )
+                printf "ERROR: Cannot install into directories with spaces\\n" >&2
+                exit 1
+                ;;
+            *)
+                eval PREFIX="$user_prefix"
+                ;;
+        esac
+    fi
+fi # !BATCH
+
+case "$PREFIX" in
+    *\ * )
+        printf "ERROR: Cannot install into directories with spaces\\n" >&2
+        exit 1
+        ;;
+esac
+
+if [ "$FORCE" = "0" ] && [ -e "$PREFIX" ]; then
+    printf "ERROR: File or directory already exists: '%s'\\n" "$PREFIX" >&2
+    printf "If you want to update an existing installation, use the -u option.\\n" >&2
+    exit 1
+fi
+
+
+if ! mkdir -p "$PREFIX"; then
+    printf "ERROR: Could not create directory: '%s'\\n" "$PREFIX" >&2
+    exit 1
+fi
+
+PREFIX=$(cd "$PREFIX"; pwd)
+export PREFIX
+
+printf "PREFIX=%s\\n" "$PREFIX"
+
+# verify the MD5 sum of the tarball appended to this header
+MD5=$(tail -n +496 "$THIS_PATH" | md5sum -)
+if ! echo "$MD5" | grep 2fbc902850c5401dd8056fdb943a3930 >/dev/null; then
+    printf "WARNING: md5sum mismatch of tar archive\\n" >&2
+    printf "expected: 2fbc902850c5401dd8056fdb943a3930\\n" >&2
+    printf "     got: %s\\n" "$MD5" >&2
+fi
+
+# extract the tarball appended to this header, this creates the *.tar.bz2 files
+# for all the packages which get installed below
+cd "$PREFIX"
+
+
+if ! tail -n +496 "$THIS_PATH" | tar xf -; then
+    printf "ERROR: could not extract tar starting at line 496\\n" >&2
+    exit 1
+fi
+
+PRECONDA="$PREFIX/preconda.tar.bz2"
+bunzip2 -c $PRECONDA | tar -xf - --no-same-owner || exit 1
+rm -f $PRECONDA
+
+PYTHON="$PREFIX/bin/python"
+MSGS="$PREFIX/.messages.txt"
+touch "$MSGS"
+export FORCE
+
+install_dist()
+{
+    # This function installs a conda package into prefix, but without linking
+    # the conda packages.  It untars the package and calls a simple script
+    # which does the post extract steps (update prefix files, run 'post-link',
+    # and creates the conda metadata).  Note that this is all done without
+    # conda.
+    printf "installing: %s ...\\n" "$1"
+    PKG_PATH="$PREFIX"/pkgs/$1
+    PKG="$PKG_PATH".tar.bz2
+    mkdir -p $PKG_PATH || exit 1
+    bunzip2 -c "$PKG" | tar -xf - -C "$PKG_PATH" --no-same-owner || exit 1
+    "$PREFIX/pkgs/python-2.7.14-h41cc02d_21/bin/python" -E -s \
+        "$PREFIX"/pkgs/.install.py $INST_OPT --root-prefix="$PREFIX" --link-dist="$1" || exit 1
+    if [ "$1" = "python-2.7.14-h41cc02d_21" ]; then
+        if ! "$PYTHON" -E -V; then
+            printf "ERROR:\\n" >&2
+            printf "cannot execute native linux-32 binary, output from 'uname -a' is:\\n" >&2
+            uname -a >&2
+            exit 1
+        fi
+    fi
+}
+
+install_dist python-2.7.14-h41cc02d_21
+install_dist ca-certificates-2017.08.26-h1d4fec5_0
+install_dist conda-env-2.6.0-h36134e3_0
+install_dist libgcc-ng-7.2.0-h7cc24e2_2
+install_dist libstdcxx-ng-7.2.0-h7a57d05_2
+install_dist libffi-3.2.1-h9e1e044_3
+install_dist ncurses-6.0-hdbb8b83_1
+install_dist openssl-1.0.2l-h38d746a_5
+install_dist tk-8.6.7-he6a46c3_1
+install_dist yaml-0.1.7-hd5ee3ad_1
+install_dist zlib-1.2.11-h57a7a75_1
+install_dist libedit-3.1-h9ac1fc1_0
+install_dist readline-7.0-h4f40f53_3
+install_dist sqlite-3.20.1-he1c59fe_1
+install_dist asn1crypto-0.22.0-py27he97fa27_1
+install_dist certifi-2017.7.27.1-py27h7859e83_0
+install_dist chardet-3.0.4-py27h24ac8b0_1
+install_dist enum34-1.1.6-py27h85d59be_1
+install_dist idna-2.6-py27ha1b4782_1
+install_dist ipaddress-1.0.18-py27h087eb74_0
+install_dist pycosat-0.6.2-py27h748140f_0
+install_dist pycparser-2.18-py27h94f9063_1
+install_dist pysocks-1.6.7-py27hb9e654a_1
+install_dist ruamel_yaml-0.11.14-py27h060dd3b_2
+install_dist six-1.10.0-py27h9c1c466_1
+install_dist cffi-1.10.0-py27hb6f8fb9_1
+install_dist setuptools-36.5.0-py27hdccd021_0
+install_dist cryptography-2.0.3-py27h1a61409_1
+install_dist wheel-0.29.0-py27h1daca49_1
+install_dist pip-9.0.1-py27hc3e315b_3
+install_dist pyopenssl-17.2.0-py27h050d878_0
+install_dist urllib3-1.22-py27h2188871_0
+install_dist requests-2.18.4-py27h4637c99_1
+install_dist conda-4.3.30-py27hba039c0_0
+
+
+mkdir -p $PREFIX/envs
+
+if [ "$FORCE" = "1" ]; then
+    "$PYTHON" -E -s "$PREFIX"/pkgs/.install.py --rm-dup || exit 1
+fi
+
+cat "$MSGS"
+rm -f "$MSGS"
+$PYTHON -E -s "$PREFIX/pkgs/.cio-config.py" "$THIS_PATH" || exit 1
+printf "installation finished.\\n"
+
+if [ "$PYTHONPATH" != "" ]; then
+    printf "WARNING:\\n"
+    printf "    You currently have a PYTHONPATH environment variable set. This may cause\\n"
+    printf "    unexpected behavior when running the Python interpreter in Miniconda2.\\n"
+    printf "    For best results, please verify that your PYTHONPATH only points to\\n"
+    printf "    directories of packages that are compatible with the Python interpreter\\n"
+    printf "    in Miniconda2: $PREFIX\\n"
+fi
+
+if [ "$BATCH" = "0" ]; then
+    # Interactive mode.
+    BASH_RC="$HOME"/.bashrc
+    DEFAULT=no
+    printf "Do you wish the installer to prepend the Miniconda2 install location\\n"
+    printf "to PATH in your %s ? [yes|no]\\n" "$BASH_RC"
+    printf "[%s] >>> " "$DEFAULT"
+    read -r ans
+    if [ "$ans" = "" ]; then
+        ans=$DEFAULT
+    fi
+    if [ "$ans" != "yes" ] && [ "$ans" != "Yes" ] && [ "$ans" != "YES" ] && \
+       [ "$ans" != "y" ]   && [ "$ans" != "Y" ]
+    then
+        printf "\\n"
+        printf "You may wish to edit your .bashrc to prepend the Miniconda2 install location to PATH:\\n"
+        printf "\\n"
+        printf "export PATH=%s/bin:\$PATH\\n" "$PREFIX"
+        printf "\\n"
+    else
+        if [ -f "$BASH_RC" ]; then
+            printf "\\n"
+            printf "Appending source %s/bin/activate to %s\\n" "$PREFIX" "$BASH_RC"
+            printf "A backup will be made to: %s-miniconda2.bak\\n" "$BASH_RC"
+            printf "\\n"
+            cp "$BASH_RC" "${BASH_RC}"-miniconda2.bak
+        else
+            printf "\\n"
+            printf "Appending source %s/bin/activate in\\n" "$PREFIX"
+            printf "newly created %s\\n" "$BASH_RC"
+        fi
+        printf "\\n"
+        printf "For this change to become active, you have to open a new terminal.\\n"
+        printf "\\n"
+        printf "\\n" >> "$BASH_RC"
+        printf "# added by Miniconda2 installer\\n"            >> "$BASH_RC"
+        printf "export PATH=\"%s/bin:\$PATH\"\\n" "$PREFIX"  >> "$BASH_RC"
+    fi
+
+    printf "Thank you for installing Miniconda2!\\n"
+fi # !BATCH
+
+if [ "$TEST" = "1" ]; then
+    printf "INFO: Running package tests in a subshell\\n"
+    (. "$PREFIX"/bin/activate
+     which conda-build > /dev/null 2>&1 || conda install -y conda-build
+     if [ ! -d "$PREFIX"/conda-bld/linux-32 ]; then
+         mkdir -p "$PREFIX"/conda-bld/linux-32
+     fi
+     cp -f "$PREFIX"/pkgs/*.tar.bz2 "$PREFIX"/conda-bld/linux-32/
+     conda index "$PREFIX"/conda-bld/linux-32/
+     conda-build --override-channels --channel local --test --keep-going "$PREFIX"/conda-bld/linux-32/*.tar.bz2
+    )
+    NFAILS=$?
+    if [ "$NFAILS" != "0" ]; then
+        if [ "$NFAILS" = "1" ]; then
+            printf "ERROR: 1 test failed\\n" >&2
+            printf "To re-run the tests for the above failed package, please enter:\\n"
+            printf ". %s/bin/activate\\n" "$PREFIX"
+            printf "conda-build --override-channels --channel local --test <full-path-to-failed.tar.bz2>\\n"
+        else
+            printf "ERROR: %s test failed\\n" $NFAILS >&2
+            printf "To re-run the tests for the above failed packages, please enter:\\n"
+            printf ". %s/bin/activate\\n" "$PREFIX"
+            printf "conda-build --override-channels --channel local --test <full-path-to-failed.tar.bz2>\\n"
+        fi
+        exit $NFAILS
+    fi
+fi
+
+exit 0
+@@END_HEADER@@
